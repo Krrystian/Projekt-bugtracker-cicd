@@ -1,0 +1,37 @@
+{{- if .Values.database.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bugtracker.dbName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bugtracker.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "bugtracker.selectorLabels" (dict "ctx" . "component" "database") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: {{ .Values.database.port }}
+      targetPort: postgres
+---
+# Headless Service required by the StatefulSet (stable DNS name
+# <name>-0.<name>-headless). The app keeps using the ClusterIP Service above.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bugtracker.dbName" . }}-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bugtracker.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  clusterIP: None
+  selector:
+    {{- include "bugtracker.selectorLabels" (dict "ctx" . "component" "database") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: {{ .Values.database.port }}
+      targetPort: postgres
+{{- end }}

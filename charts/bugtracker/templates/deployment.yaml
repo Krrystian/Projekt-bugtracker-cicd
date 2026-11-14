@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bugtracker.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bugtracker.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+  annotations:
+    # The tag is the immutable commit SHA; Kyverno (stage 14) verifies the Cosign
+    # signature and pins the image to its digest at admission (mutateDigest).
+    checkov.io/skip1: CKV_K8S_43=Tag is an immutable commit SHA; digest pinned and signature verified by Kyverno at admission (stage 14)
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "bugtracker.selectorLabels" (dict "ctx" . "component" "app") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bugtracker.labels" . | nindent 8 }}
+        app.kubernetes.io/component: app
+      annotations:
+        # Roll the pods when the ConfigMap changes (env vars are read at start).
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "bugtracker.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: bugtracker
+          image: {{ include "bugtracker.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.app.containerPort }}
+          # Non-secret settings from the ConfigMap; secrets are mounted as
+          # files (not env vars), see volumes below.
+          envFrom:
+            - configMapRef:
+                name: {{ include "bugtracker.fullname" . }}-config
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.app.resources | nindent 12 }}
+          # The app waits up to ~60 s for the database before listening.
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 2
+            failureThreshold: 45
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: secrets
+              mountPath: /run/secrets/bugtracker
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: secrets
+          secret:
+            secretName: {{ required "existingSecret is required" .Values.existingSecret }}
+            defaultMode: 0440
+            items:
+              - key: db-password
+                path: db_password
+              - key: secret-key
+                path: secret_key
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

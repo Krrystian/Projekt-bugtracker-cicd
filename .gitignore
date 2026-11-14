@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.sarif
+checkov/
+zap/
+trivy/
+trivy-mapped.sarif
+.DS_Store
