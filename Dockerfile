@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
 
 # Base image pinned to an exact release and digest (never "latest").
-ARG PYTHON_IMAGE=python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
+# VULN-05: outdated base image (Oct 2023, Debian 12 without two years of security
+# fixes); pinned by tag and digest, so it passes the Dockerfile lint
+ARG PYTHON_IMAGE=python:3.12.0-slim-bookworm@sha256:19a6235339a74eca01227b03629f63b6f5020abc21142436eced6ec3a9839a76
 
 # --- Stage 1: install dependencies into an isolated virtualenv ---------------
 FROM ${PYTHON_IMAGE} AS builder
@@ -17,11 +19,8 @@ FROM ${PYTHON_IMAGE} AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH=/opt/venv/bin:$PATH
-# Security update not yet in the base image: CVE-2026-76844, CVE-2026-85091 (zlib).
-# Remove once the pinned base image ships zlib1g >= 1:1.3.dfsg+really1.3.1-1+deb13u1.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends --only-upgrade zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1 \
-    && rm -rf /var/lib/apt/lists/*
+# VULN-05: no OS security updates on top of the outdated base image
+# (main upgrades zlib here; Debian 12 has no such package version).
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
 WORKDIR /srv
